@@ -5,16 +5,23 @@
   "type": "module",
   "scripts": {
     "start": "elizaos start --character ./characters/agent.character.json",
-    "dev": "elizaos dev --character ./characters/agent.character.json"
+    "dev": "elizaos dev --character ./characters/agent.character.json",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@elizaos/core": "^1.0.0",
     "@elizaos/plugin-anthropic": "^1.5.12",
     "@elizaos/plugin-bootstrap": "^1.0.0",
-    "@elizaos/plugin-openai": "^1.0.0"
+    "@elizaos/plugin-openai": "^1.0.0",
+    "@solana/spl-token": "^0.4.14",
+    "@solana/web3.js": "^1.98.4",
+    "bs58": "^6.0.0"
   },
   "devDependencies": {
     "@elizaos/cli": "^1.0.0",
-    "typescript": "^5.0.0"
+    "@types/node": "^25.5.2",
+    "typescript": "^5.0.0",
+    "vitest": "^4.1.2"
   }
 }
