@@ -107,7 +107,7 @@ describe('resolveIntent — unrecognized intent', () => {
   });
 
   it('returns null for a completely unrelated string', async () => {
-    const result = await resolveIntent('rebalance portfolio', makeSnapshot());
+    const result = await resolveIntent('what is the weather today', makeSnapshot());
     expect(result).toBeNull();
   });
 
@@ -514,5 +514,390 @@ describe('resolveIntent — reduce risk', () => {
 
     expect(plan!.estimatedCost).toBe(0);
     expect(plan!.slippageImpact).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// resolveIntent — "take profit on {TOKEN}" intent
+// ---------------------------------------------------------------------------
+
+describe('resolveIntent — take profit', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('returns a swap step for 50% of the named token', async () => {
+    mockGetQuote.mockResolvedValue(makeQuote(0.002));
+
+    const snapshot = makeSnapshot({
+      wallet: {
+        sol: 0,
+        tokens: [makeToken({ mint: SOL_MINT, symbol: 'SOL', amount: 4, usdValue: 600 })],
+        totalUSD: 600,
+      },
+    });
+
+    const plan = await resolveIntent('take profit on SOL', snapshot);
+
+    expect(plan).not.toBeNull();
+    expect(plan!.steps).toHaveLength(1);
+    expect(plan!.steps[0]!.action).toBe('swap');
+    expect(plan!.steps[0]!.description).toMatch(/take profit/i);
+    expect(plan!.steps[0]!.description).toMatch(/SOL/);
+    expect(plan!.steps[0]!.description).toMatch(/50%/);
+    expect(plan!.steps[0]!.params.outputMint).toBe(USDC_MINT);
+  });
+
+  it('passes half the raw token amount to Jupiter quote', async () => {
+    mockGetQuote.mockResolvedValue(makeQuote());
+
+    const snapshot = makeSnapshot({
+      wallet: {
+        sol: 0,
+        tokens: [makeToken({ mint: SOL_MINT, symbol: 'SOL', amount: 4, usdValue: 600 })],
+        totalUSD: 600,
+      },
+    });
+
+    await resolveIntent('take profit on SOL', snapshot);
+
+    // SOL: 4 / 2 = 2, raw = 2 * 10^9 = 2_000_000_000
+    expect(mockGetQuote).toHaveBeenCalledWith(SOL_MINT, USDC_MINT, 2_000_000_000, 50);
+  });
+
+  it('is case-insensitive for the token symbol', async () => {
+    mockGetQuote.mockResolvedValue(makeQuote());
+
+    const snapshot = makeSnapshot({
+      wallet: {
+        sol: 0,
+        tokens: [makeToken({ mint: RAY_MINT, symbol: 'RAY', amount: 100, usdValue: 200 })],
+        totalUSD: 200,
+      },
+    });
+
+    const plan = await resolveIntent('take profit on ray', snapshot);
+
+    expect(plan).not.toBeNull();
+    expect(plan!.steps).toHaveLength(1);
+  });
+
+  it('works with the variant "take profit RAY" (no "on")', async () => {
+    mockGetQuote.mockResolvedValue(makeQuote());
+
+    const snapshot = makeSnapshot({
+      wallet: {
+        sol: 0,
+        tokens: [makeToken({ mint: RAY_MINT, symbol: 'RAY', amount: 20, usdValue: 100 })],
+        totalUSD: 100,
+      },
+    });
+
+    const plan = await resolveIntent('take profit RAY', snapshot);
+
+    expect(plan).not.toBeNull();
+    expect(plan!.steps).toHaveLength(1);
+    expect(plan!.steps[0]!.params.inputMint).toBe(RAY_MINT);
+  });
+
+  it('returns empty steps when token is not in wallet', async () => {
+    const snapshot = makeSnapshot({
+      wallet: {
+        sol: 0,
+        tokens: [makeToken({ mint: SOL_MINT, symbol: 'SOL', amount: 1, usdValue: 150 })],
+        totalUSD: 150,
+      },
+    });
+
+    const plan = await resolveIntent('take profit on JTO', snapshot);
+
+    expect(plan).not.toBeNull();
+    expect(plan!.steps).toHaveLength(0);
+    expect(mockGetQuote).not.toHaveBeenCalled();
+  });
+
+  it('returns empty steps when token is a stablecoin', async () => {
+    const snapshot = makeSnapshot({
+      wallet: {
+        sol: 0,
+        tokens: [makeToken({ mint: USDC_MINT, symbol: 'USDC', amount: 500, usdValue: 500 })],
+        totalUSD: 500,
+      },
+    });
+
+    const plan = await resolveIntent('take profit on USDC', snapshot);
+
+    expect(plan).not.toBeNull();
+    expect(plan!.steps).toHaveLength(0);
+    expect(mockGetQuote).not.toHaveBeenCalled();
+  });
+
+  it('returns empty steps when token usdValue <= 1 (dust)', async () => {
+    const snapshot = makeSnapshot({
+      wallet: {
+        sol: 0,
+        tokens: [makeToken({ mint: RAY_MINT, symbol: 'RAY', amount: 0.001, usdValue: 0.5 })],
+        totalUSD: 0.5,
+      },
+    });
+
+    const plan = await resolveIntent('take profit on RAY', snapshot);
+
+    expect(plan).not.toBeNull();
+    expect(plan!.steps).toHaveLength(0);
+    expect(mockGetQuote).not.toHaveBeenCalled();
+  });
+
+  it('adds a retry note in step params when quote fails', async () => {
+    mockGetQuote.mockRejectedValue(new Error('Jupiter timeout'));
+
+    const snapshot = makeSnapshot({
+      wallet: {
+        sol: 0,
+        tokens: [makeToken({ mint: SOL_MINT, symbol: 'SOL', amount: 2, usdValue: 300 })],
+        totalUSD: 300,
+      },
+    });
+
+    const plan = await resolveIntent('take profit on SOL', snapshot);
+
+    expect(plan).not.toBeNull();
+    expect(plan!.steps).toHaveLength(1);
+    expect(plan!.steps[0]!.params.note).toMatch(/quote failed/i);
+  });
+
+  it('sets estimatedCost to 0.005 (one swap step)', async () => {
+    mockGetQuote.mockResolvedValue(makeQuote(0.001));
+
+    const snapshot = makeSnapshot({
+      wallet: {
+        sol: 0,
+        tokens: [makeToken({ mint: SOL_MINT, symbol: 'SOL', amount: 2, usdValue: 300 })],
+        totalUSD: 300,
+      },
+    });
+
+    const plan = await resolveIntent('take profit on SOL', snapshot);
+
+    expect(plan!.estimatedCost).toBeCloseTo(0.005, 6);
+  });
+
+  it('sets slippageImpact from quote priceImpact', async () => {
+    mockGetQuote.mockResolvedValue(makeQuote(0.004));
+
+    const snapshot = makeSnapshot({
+      wallet: {
+        sol: 0,
+        tokens: [makeToken({ mint: SOL_MINT, symbol: 'SOL', amount: 2, usdValue: 300 })],
+        totalUSD: 300,
+      },
+    });
+
+    const plan = await resolveIntent('take profit on SOL', snapshot);
+
+    expect(plan!.slippageImpact).toBeCloseTo(0.004, 6);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// resolveIntent — "rebalance" intent
+// ---------------------------------------------------------------------------
+
+describe('resolveIntent — rebalance', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('returns suggest steps for overweight tokens', async () => {
+    // SOL = 80%, RAY = 20% — equal weight would be 50/50
+    // SOL is overweight by 30pp (> 5pp threshold) → flagged
+    // RAY is underweight → not flagged
+    const snapshot = makeSnapshot({
+      wallet: {
+        sol: 0,
+        tokens: [
+          makeToken({ mint: SOL_MINT, symbol: 'SOL', amount: 8, usdValue: 800 }),
+          makeToken({ mint: RAY_MINT, symbol: 'RAY', amount: 100, usdValue: 200 }),
+        ],
+        totalUSD: 1000,
+      },
+    });
+
+    const plan = await resolveIntent('rebalance', snapshot);
+
+    expect(plan).not.toBeNull();
+    expect(plan!.steps.length).toBeGreaterThan(0);
+    const solStep = plan!.steps.find((s) => (s.params.symbol as string) === 'SOL');
+    expect(solStep).toBeDefined();
+    expect(solStep!.action).toBe('suggest');
+  });
+
+  it('description includes current allocation, target, and overweight amount', async () => {
+    const snapshot = makeSnapshot({
+      wallet: {
+        sol: 0,
+        tokens: [
+          makeToken({ mint: SOL_MINT, symbol: 'SOL', amount: 8, usdValue: 800 }),
+          makeToken({ mint: RAY_MINT, symbol: 'RAY', amount: 100, usdValue: 200 }),
+        ],
+        totalUSD: 1000,
+      },
+    });
+
+    const plan = await resolveIntent('rebalance', snapshot);
+    const solStep = plan!.steps[0]!;
+
+    expect(solStep.description).toMatch(/SOL/);
+    expect(solStep.description).toMatch(/80\.0%/);   // current
+    expect(solStep.description).toMatch(/50\.0%/);   // target
+    expect(solStep.description).toMatch(/30\.0pp/);  // excess
+  });
+
+  it('sorts steps descending by excess allocation (most overweight first)', async () => {
+    // 4 tokens: SOL=40%, RAY=30%, JTO=20%, ORCA=10% → equal weight 25%
+    // SOL excess = +15pp (overweight), RAY excess = +5pp (borderline, exactly 5pp → NOT included, must be > 5pp)
+    // JTO underweight, ORCA underweight
+    // Use SOL=45%, RAY=35%, JTO=12%, ORCA=8% to guarantee 2 overweight entries
+    const ORCA_MINT = 'orcaEKTdK7LKz57vaAYr9QeNsVEPfiu6QeMU1kektZE';
+    const snapshot = makeSnapshot({
+      wallet: {
+        sol: 0,
+        tokens: [
+          makeToken({ mint: SOL_MINT, symbol: 'SOL', amount: 45, usdValue: 450 }),
+          makeToken({ mint: RAY_MINT, symbol: 'RAY', amount: 35, usdValue: 350 }),
+          makeToken({ mint: JTO_MINT, symbol: 'JTO', amount: 12, usdValue: 120 }),
+          makeToken({ mint: ORCA_MINT, symbol: 'ORCA', amount: 8, usdValue: 80 }),
+        ],
+        totalUSD: 1000,
+      },
+    });
+
+    // Equal weight = 25%. SOL=45% (+20pp), RAY=35% (+10pp) — both > 5pp threshold
+    const plan = await resolveIntent('rebalance', snapshot);
+
+    expect(plan!.steps.length).toBeGreaterThanOrEqual(2);
+    // Most overweight (SOL +20pp) comes before RAY (+10pp)
+    expect(plan!.steps[0]!.params.symbol).toBe('SOL');
+    expect(plan!.steps[1]!.params.symbol).toBe('RAY');
+  });
+
+  it('excludes tokens within 5pp of equal weight (not overweight enough)', async () => {
+    // Equal portfolio — no token is overweight
+    const snapshot = makeSnapshot({
+      wallet: {
+        sol: 0,
+        tokens: [
+          makeToken({ mint: SOL_MINT, symbol: 'SOL', amount: 5, usdValue: 500 }),
+          makeToken({ mint: RAY_MINT, symbol: 'RAY', amount: 100, usdValue: 500 }),
+        ],
+        totalUSD: 1000,
+      },
+    });
+
+    const plan = await resolveIntent('rebalance', snapshot);
+
+    expect(plan).not.toBeNull();
+    expect(plan!.steps).toHaveLength(0);
+  });
+
+  it('excludes stablecoin tokens from rebalance calculation', async () => {
+    // USDC should not be counted as a token to rebalance
+    const snapshot = makeSnapshot({
+      wallet: {
+        sol: 0,
+        tokens: [
+          makeToken({ mint: SOL_MINT, symbol: 'SOL', amount: 8, usdValue: 800 }),
+          makeToken({ mint: USDC_MINT, symbol: 'USDC', amount: 1000, usdValue: 1000 }),
+          makeToken({ mint: RAY_MINT, symbol: 'RAY', amount: 100, usdValue: 200 }),
+        ],
+        totalUSD: 2000,
+      },
+    });
+
+    const plan = await resolveIntent('rebalance', snapshot);
+
+    // USDC should not appear in suggestions
+    const usdcStep = plan!.steps.find((s) => (s.params.symbol as string) === 'USDC');
+    expect(usdcStep).toBeUndefined();
+  });
+
+  it('returns empty steps when wallet has no non-stable tokens', async () => {
+    const snapshot = makeSnapshot({
+      wallet: {
+        sol: 0,
+        tokens: [
+          makeToken({ mint: USDC_MINT, symbol: 'USDC', amount: 1000, usdValue: 1000 }),
+        ],
+        totalUSD: 1000,
+      },
+    });
+
+    const plan = await resolveIntent('rebalance', snapshot);
+
+    expect(plan).not.toBeNull();
+    expect(plan!.steps).toHaveLength(0);
+  });
+
+  it('returns empty steps when wallet tokens list is empty', async () => {
+    const snapshot = makeSnapshot({
+      wallet: { sol: 0, tokens: [], totalUSD: 0 },
+    });
+
+    const plan = await resolveIntent('rebalance', snapshot);
+
+    expect(plan).not.toBeNull();
+    expect(plan!.steps).toHaveLength(0);
+  });
+
+  it('does not call JupiterService (Phase 1 is suggest-only)', async () => {
+    const snapshot = makeSnapshot({
+      wallet: {
+        sol: 0,
+        tokens: [
+          makeToken({ mint: SOL_MINT, symbol: 'SOL', amount: 9, usdValue: 900 }),
+          makeToken({ mint: RAY_MINT, symbol: 'RAY', amount: 50, usdValue: 100 }),
+        ],
+        totalUSD: 1000,
+      },
+    });
+
+    await resolveIntent('rebalance', snapshot);
+
+    expect(mockGetQuote).not.toHaveBeenCalled();
+  });
+
+  it('returns estimatedCost=0 and slippageImpact=0', async () => {
+    const snapshot = makeSnapshot({
+      wallet: {
+        sol: 0,
+        tokens: [
+          makeToken({ mint: SOL_MINT, symbol: 'SOL', amount: 9, usdValue: 900 }),
+          makeToken({ mint: RAY_MINT, symbol: 'RAY', amount: 50, usdValue: 100 }),
+        ],
+        totalUSD: 1000,
+      },
+    });
+
+    const plan = await resolveIntent('rebalance', snapshot);
+
+    expect(plan!.estimatedCost).toBe(0);
+    expect(plan!.slippageImpact).toBe(0);
+  });
+
+  it('is case-insensitive — "REBALANCE" also triggers the handler', async () => {
+    const snapshot = makeSnapshot({
+      wallet: {
+        sol: 0,
+        tokens: [
+          makeToken({ mint: SOL_MINT, symbol: 'SOL', amount: 9, usdValue: 900 }),
+          makeToken({ mint: RAY_MINT, symbol: 'RAY', amount: 50, usdValue: 100 }),
+        ],
+        totalUSD: 1000,
+      },
+    });
+
+    const plan = await resolveIntent('REBALANCE my portfolio', snapshot);
+
+    expect(plan).not.toBeNull();
   });
 });
