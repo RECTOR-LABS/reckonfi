@@ -56,8 +56,19 @@ vi.mock('../services/marginfi.service', () => {
   return { MarginfiService };
 });
 
-// Import SUT after mocks are registered
+// Mock the risk profiler evaluator so we can assert it is called.
+// The factory must not reference outer variables (vi.mock is hoisted).
+vi.mock('../evaluators/risk-profiler', () => ({
+  getRiskProfile: vi.fn().mockReturnValue({
+    tolerance: 'moderate',
+    avgLeverage: 0,
+    historicalActions: [],
+  }),
+}));
+
+// Import SUT and mock helpers after all mocks are registered
 import { analyzePortfolioAction } from './analyze-portfolio';
+import { getRiskProfile as mockGetRiskProfile } from '../evaluators/risk-profiler';
 import {
   createMockRuntime,
   createMockMessage,
@@ -293,6 +304,27 @@ describe('analyzePortfolioAction', () => {
       const lastCall = callback.calls[callback.calls.length - 1];
       // recommendation.action is always included in the output
       expect(lastCall.text.toLowerCase()).toMatch(/hold|reduce|monitor/);
+    });
+
+    it('calls getRiskProfile and passes the profile into buildPortfolioSnapshot', async () => {
+      setupSuccessMocks();
+      const runtime = createMockRuntime();
+      const callback = createMockCallback();
+
+      const result = await analyzePortfolioAction.handler(
+        runtime,
+        createMockMessage('analyze portfolio'),
+        createMockState(),
+        {},
+        callback,
+      );
+
+      // getRiskProfile must have been invoked so the snapshot includes learned tolerance
+      expect(mockGetRiskProfile).toHaveBeenCalledOnce();
+      // The handler should still succeed — the profile is wired through
+      expect(result).toMatchObject({ success: true });
+      const data = (result as { success: true; data: { snapshot: { riskProfile: unknown } } }).data;
+      expect(data.snapshot.riskProfile).toMatchObject({ tolerance: 'moderate' });
     });
 
     it('calls all five services with correct wallet address', async () => {

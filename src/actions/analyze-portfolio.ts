@@ -6,6 +6,7 @@ import { DriftService } from '../services/drift.service';
 import { MarginfiService } from '../services/marginfi.service';
 import { buildPortfolioSnapshot } from '../reasoning/context-builder';
 import { analyzePortfolio } from '../reasoning/engine';
+import { getRiskProfile } from '../evaluators/risk-profiler';
 import type {
   TokenBalance,
   Position,
@@ -109,8 +110,9 @@ async function handler(
     }),
   );
 
-  // Step 3: build snapshot
-  const snapshot = buildPortfolioSnapshot(tokens, positions, prices);
+  // Step 3: build snapshot — include learned risk profile so the reasoning engine
+  // adapts recommendations to the user's observed tolerance over time.
+  const snapshot = buildPortfolioSnapshot(tokens, positions, prices, getRiskProfile());
 
   // Step 4: run reasoning engine
   const result = analyzePortfolio(snapshot);
