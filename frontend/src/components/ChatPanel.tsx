@@ -16,6 +16,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
+import { Send, Zap } from 'lucide-react';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -23,6 +24,25 @@ interface ChatMessage {
   id: string;
   role: 'user' | 'assistant';
   content: string;
+  timestamp: Date;
+}
+
+// ─── Quick action suggestions ─────────────────────────────────────────────────
+
+const QUICK_ACTIONS = [
+  { label: 'Check Balance', prompt: 'What is my current portfolio balance?' },
+  { label: 'Analyze Portfolio', prompt: 'Analyze my portfolio risk and diversification.' },
+  { label: 'Move to Stables', prompt: 'How should I move my positions to stablecoins?' },
+] as const;
+
+// ─── Timestamp formatter ──────────────────────────────────────────────────────
+
+function formatMessageTime(date: Date): string {
+  return date.toLocaleTimeString('en-US', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  });
 }
 
 // ─── Message Bubble ───────────────────────────────────────────────────────────
@@ -33,8 +53,8 @@ function MessageBubble({ message }: { message: ChatMessage }) {
   return (
     <div
       className={cn(
-        'flex w-full',
-        isUser ? 'justify-end' : 'justify-start'
+        'flex w-full flex-col gap-1',
+        isUser ? 'items-end' : 'items-start'
       )}
     >
       <div
@@ -42,11 +62,22 @@ function MessageBubble({ message }: { message: ChatMessage }) {
           'max-w-[80%] rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed',
           isUser
             ? 'bg-primary text-primary-foreground rounded-tr-sm'
-            : 'bg-muted text-foreground rounded-tl-sm'
+            : 'rounded-tl-sm text-foreground'
         )}
+        style={
+          isUser
+            ? undefined
+            : {
+                background:
+                  'linear-gradient(135deg, hsl(var(--muted)) 0%, oklch(0.24 0.02 280) 100%)',
+              }
+        }
       >
         {message.content}
       </div>
+      <span className="text-[10px] text-muted-foreground px-1">
+        {formatMessageTime(message.timestamp)}
+      </span>
     </div>
   );
 }
@@ -55,15 +86,23 @@ function MessageBubble({ message }: { message: ChatMessage }) {
 
 function ThinkingIndicator() {
   return (
-    <div className="flex justify-start">
-      <div className="bg-muted rounded-2xl rounded-tl-sm px-3.5 py-2.5 flex items-center gap-1">
+    <div className="flex justify-start items-start gap-2">
+      <div
+        className="rounded-2xl rounded-tl-sm px-3.5 py-3 flex items-center gap-1.5"
+        style={{
+          background:
+            'linear-gradient(135deg, hsl(var(--muted)) 0%, oklch(0.24 0.02 280) 100%)',
+        }}
+      >
         <span className="text-xs text-muted-foreground">Thinking</span>
-        <span className="flex gap-0.5 items-end pb-0.5">
-          {[0, 150, 300].map((delay) => (
+        <span className="flex gap-0.5 items-center">
+          {[0, 200, 400].map((delay) => (
             <span
               key={delay}
-              className="size-1 rounded-full bg-muted-foreground animate-bounce"
-              style={{ animationDelay: `${delay}ms` }}
+              className="size-1.5 rounded-full bg-violet-400"
+              style={{
+                animation: `pulse-dot 1.2s ease-in-out ${delay}ms infinite`,
+              }}
             />
           ))}
         </span>
@@ -79,6 +118,7 @@ const WELCOME_MESSAGE: ChatMessage = {
   role: 'assistant',
   content:
     "Hello! I'm ReckonFi, your AI-powered DeFi portfolio advisor. Ask me about your positions, market conditions, or risk analysis.",
+  timestamp: new Date(),
 };
 
 // Module-level flag: session creation attempted per page load
@@ -110,17 +150,18 @@ export function ChatPanel() {
     });
   }, []);
 
-  const handleSend = useCallback(async () => {
-    const content = input.trim();
+  const handleSend = useCallback(async (overrideContent?: string) => {
+    const content = (overrideContent ?? input).trim();
     if (!content || isSending) return;
 
     setSendError(null);
-    setInput('');
+    if (!overrideContent) setInput('');
 
     const userMsg: ChatMessage = {
       id: `user-${Date.now()}`,
       role: 'user',
       content,
+      timestamp: new Date(),
     };
 
     setMessages((prev) => [...prev, userMsg]);
@@ -140,6 +181,7 @@ export function ChatPanel() {
         id: response.id,
         role: 'assistant',
         content: response.content,
+        timestamp: new Date(),
       };
 
       setMessages((prev) => [...prev, assistantMsg]);
@@ -149,7 +191,7 @@ export function ChatPanel() {
 
       // Remove the optimistically-added user message on failure
       setMessages((prev) => prev.filter((m) => m.id !== userMsg.id));
-      setInput(content); // restore input so the user can retry
+      if (!overrideContent) setInput(content); // restore input so the user can retry
     } finally {
       setIsSending(false);
       // Refocus input after response
@@ -190,8 +232,32 @@ export function ChatPanel() {
         </div>
       )}
 
+      {/* Quick action chips */}
+      <div className="px-4 pb-2 flex gap-2 flex-wrap border-t pt-3">
+        <span className="flex items-center gap-1 text-[10px] text-muted-foreground self-center mr-1">
+          <Zap className="size-3" aria-hidden="true" />
+          Quick
+        </span>
+        {QUICK_ACTIONS.map((action) => (
+          <button
+            key={action.label}
+            type="button"
+            disabled={isSending}
+            onClick={() => handleSend(action.prompt)}
+            className={cn(
+              'text-[11px] px-2.5 py-1 rounded-full border border-border',
+              'bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground',
+              'transition-colors duration-150 disabled:opacity-40 disabled:cursor-not-allowed',
+              'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
+            )}
+          >
+            {action.label}
+          </button>
+        ))}
+      </div>
+
       {/* Input row */}
-      <div className="border-t px-4 py-3 flex items-center gap-2">
+      <div className="px-4 pb-4 flex items-center gap-2">
         <Input
           ref={inputRef}
           value={input}
@@ -199,15 +265,17 @@ export function ChatPanel() {
           onKeyDown={handleKeyDown}
           placeholder="Ask about your portfolio…"
           disabled={isSending}
-          className="flex-1"
+          className="flex-1 h-10 bg-muted/40 border-border focus-visible:ring-violet-500/50"
           aria-label="Chat input"
         />
         <Button
-          onClick={handleSend}
+          onClick={() => handleSend()}
           disabled={isSending || !input.trim()}
           size="sm"
+          className="h-10 px-3 gap-1.5"
           aria-label="Send message"
         >
+          <Send className="size-3.5" aria-hidden="true" />
           Send
         </Button>
       </div>
