@@ -21,12 +21,20 @@ interface DasTokenInfo {
 
 interface DasAsset {
   id: string;
+  content?: { metadata?: { symbol?: string; name?: string } };
   token_info?: DasTokenInfo | null;
+}
+
+interface DasNativeBalance {
+  lamports: number;
+  price_per_sol: number;
+  total_price: number;
 }
 
 interface DasGetAssetsByOwnerResult {
   result: {
     items: DasAsset[];
+    nativeBalance?: DasNativeBalance;
   };
 }
 
@@ -68,7 +76,7 @@ export class HeliusService {
           ownerAddress: walletAddress,
           displayOptions: {
             showFungible: true,
-            showNativeBalance: false,
+            showNativeBalance: true,
           },
         },
       }),
@@ -80,27 +88,45 @@ export class HeliusService {
 
     const data = (await response.json()) as DasGetAssetsByOwnerResult;
     const items = data.result.items;
+    const balances: TokenBalance[] = [];
 
-    return items
-      .filter((item): item is DasAsset & { token_info: DasTokenInfo } => {
-        return (
-          item.token_info != null &&
-          item.token_info.balance > 0
-        );
-      })
-      .map((item) => {
-        const info = item.token_info;
-        const amount = info.balance / Math.pow(10, info.decimals);
-        const pricePerToken = info.price_info?.price_per_token ?? 0;
-        const usdValue = amount * pricePerToken;
-
-        return {
-          mint: item.id,
-          symbol: info.symbol,
-          amount,
-          usdValue,
-        } satisfies TokenBalance;
+    // Add native SOL balance
+    const native = data.result.nativeBalance;
+    if (native && native.lamports > 0) {
+      const solAmount = native.lamports / 1e9;
+      balances.push({
+        mint: 'So11111111111111111111111111111111111111112',
+        symbol: 'SOL',
+        amount: solAmount,
+        usdValue: native.total_price,
       });
+    }
+
+    // Add SPL tokens
+    for (const item of items) {
+      if (!item.token_info || item.token_info.balance <= 0) continue;
+
+      const info = item.token_info;
+      const symbol =
+        info.symbol ||
+        item.content?.metadata?.symbol ||
+        '';
+
+      // Skip tokens with no symbol (unverified/spam)
+      if (!symbol) continue;
+
+      const amount = info.balance / Math.pow(10, info.decimals);
+      const pricePerToken = info.price_info?.price_per_token ?? 0;
+
+      balances.push({
+        mint: item.id,
+        symbol,
+        amount,
+        usdValue: amount * pricePerToken,
+      });
+    }
+
+    return balances;
   }
 
   /**
