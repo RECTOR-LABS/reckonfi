@@ -27,8 +27,8 @@ export const positionProvider: Provider = {
     text: string;
     data: { positions: Position[]; totalValue: number; errors: string[] };
   }> => {
-    const walletAddress = runtime.getSetting('WALLET_ADDRESS');
-    const heliusApiKey = runtime.getSetting('HELIUS_API_KEY');
+    const walletAddress = String(runtime.getSetting('WALLET_ADDRESS') ?? '');
+    const heliusApiKey = String(runtime.getSetting('HELIUS_API_KEY') ?? '');
 
     if (!walletAddress || !heliusApiKey) {
       return {

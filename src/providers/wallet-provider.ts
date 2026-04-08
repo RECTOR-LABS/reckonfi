@@ -20,8 +20,8 @@ export const walletProvider: Provider = {
     _message: Memory,
     _state: State
   ): Promise<{ text: string; data: { tokens: TokenBalance[]; totalUSD: number; walletAddress: string } | null }> => {
-    const walletAddress = runtime.getSetting('WALLET_ADDRESS');
-    const heliusApiKey = runtime.getSetting('HELIUS_API_KEY');
+    const walletAddress = String(runtime.getSetting('WALLET_ADDRESS') ?? '');
+    const heliusApiKey = String(runtime.getSetting('HELIUS_API_KEY') ?? '');
 
     if (!walletAddress || !heliusApiKey) {
       return {
