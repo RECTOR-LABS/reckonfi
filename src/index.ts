@@ -1,42 +1,26 @@
-/**
- * Custom Plugin Entry Point
- *
- * This file is where you can define custom actions, providers, and evaluators
- * for your ElizaOS agent. Add your logic here and reference this plugin in
- * your character file.
- *
- * ElizaOS Plugin Docs: https://elizaos.github.io/eliza/docs/core/plugins
- */
+import type { Plugin } from '@elizaos/core';
 
-import { type Plugin } from "@elizaos/core";
+import { checkBalanceAction } from './actions/check-balance';
+import { analyzePortfolioAction } from './actions/analyze-portfolio';
+import { swapTokensAction } from './actions/swap-tokens';
+import { setAlertAction } from './actions/set-alert';
+import { monitorPositionAction } from './actions/monitor-position';
+import { setWalletAction } from './actions/set-wallet';
 
-/**
- * Example custom action.
- * Replace this with your own action logic.
- */
-const exampleAction = {
-  name: "EXAMPLE_ACTION",
-  description: "An example action — replace with your own.",
-  similes: ["DEMO", "SAMPLE"],
-  validate: async () => true,
-  handler: async (_runtime: unknown, message: { content: { text: string } }) => {
-    console.log("Custom action triggered with message:", message.content.text);
-    return true;
-  },
-  examples: [],
+import { walletProvider } from './providers/wallet-provider';
+import { priceProvider } from './providers/price-provider';
+import { positionProvider } from './providers/position-provider';
+import { marketContextProvider } from './providers/market-context-provider';
+
+import { riskProfilerEvaluator } from './evaluators/risk-profiler';
+import { decisionTrackerEvaluator } from './evaluators/decision-tracker';
+
+export const reckonfiPlugin: Plugin = {
+  name: 'plugin-reckonfi',
+  description: 'ReckonFi — Personal Solana DeFi reasoning agent',
+  actions: [checkBalanceAction, analyzePortfolioAction, swapTokensAction, setAlertAction, monitorPositionAction, setWalletAction],
+  providers: [walletProvider, priceProvider, positionProvider, marketContextProvider],
+  evaluators: [riskProfilerEvaluator, decisionTrackerEvaluator],
 };
 
-/**
- * Your custom plugin.
- * Add this plugin's name to the `plugins` array in your character file
- * to activate it.
- */
-export const customPlugin: Plugin = {
-  name: "custom-plugin",
-  description: "My custom ElizaOS plugin",
-  actions: [exampleAction],
-  providers: [],
-  evaluators: [],
-};
-
-export default customPlugin;
+export default reckonfiPlugin;
