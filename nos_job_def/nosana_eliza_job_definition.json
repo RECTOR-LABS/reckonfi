@@ -3,7 +3,7 @@
     {
       "id": "reckonfi",
       "args": {
-        "image": "rectorlabs/reckonfi:latest",
+        "image": "rz1989/reckonfi:latest",
         "expose": 3000,
         "env": {
           "OPENAI_API_KEY": "nosana",
