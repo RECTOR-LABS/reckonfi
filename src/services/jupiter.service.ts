@@ -66,7 +66,7 @@ export class JupiterService {
     const data = (await response.json()) as JupiterPriceV3Response;
 
     const priceMap = new Map<string, number>();
-    for (const [mint, entry] of Object.entries(data.data)) {
+    for (const [mint, entry] of Object.entries(data.data ?? {})) {
       if (entry && entry.price) {
         priceMap.set(mint, parseFloat(entry.price));
       }

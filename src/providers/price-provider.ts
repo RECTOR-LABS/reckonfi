@@ -33,13 +33,22 @@ export const priceProvider: Provider = {
     const jupiterApiKey = String(runtime.getSetting('JUPITER_API_KEY') ?? '');
     const jupiter = new JupiterService(jupiterApiKey || undefined);
     const mints = TRACKED_TOKENS.map((t) => t.mint);
-    const priceMap = await jupiter.getPrices(mints);
+
+    let priceMap: Map<string, number>;
+    try {
+      priceMap = await jupiter.getPrices(mints);
+    } catch {
+      return {
+        text: 'Token prices unavailable — Jupiter API key may be required.',
+        data: { prices: [] },
+      };
+    }
 
     const prices: PriceData[] = TRACKED_TOKENS.map(({ mint, symbol }) => ({
       mint,
       symbol,
       price: priceMap.get(mint) ?? 0,
-      change24h: 0, // Phase 1: price-history source not yet integrated
+      change24h: 0,
     }));
 
     const lines = prices
