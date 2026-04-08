@@ -28,7 +28,6 @@ function makeErrorResponse(status: number) {
 describe('JupiterService', () => {
   const SOL_MINT = 'So11111111111111111111111111111111111111112';
   const USDC_MINT = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
-  const WALLET = 'FGSkt8MwXH83daNNW8ZkoqhL1KLcLoZLcdGJz84BWWr';
 
   let service: JupiterService;
 
@@ -38,16 +37,30 @@ describe('JupiterService', () => {
   });
 
   // -------------------------------------------------------------------------
+  // Constructor
+  // -------------------------------------------------------------------------
+
+  describe('constructor', () => {
+    it('accepts no arguments', () => {
+      expect(() => new JupiterService()).not.toThrow();
+    });
+
+    it('accepts an optional apiKey argument', () => {
+      expect(() => new JupiterService('test-api-key')).not.toThrow();
+    });
+  });
+
+  // -------------------------------------------------------------------------
   // getPrices
   // -------------------------------------------------------------------------
 
   describe('getPrices()', () => {
-    it('calls Jupiter Price API v2 with comma-separated mint ids', async () => {
+    it('calls Jupiter Price API v3 with comma-separated mint ids', async () => {
       mockFetch.mockResolvedValueOnce(
         makeOkJson({
           data: {
-            [SOL_MINT]: { price: '185.42' },
-            [USDC_MINT]: { price: '1.0002' },
+            [SOL_MINT]: { id: SOL_MINT, price: '185.42', type: 'derivedPrice' },
+            [USDC_MINT]: { id: USDC_MINT, price: '1.0002', type: 'derivedPrice' },
           },
         })
       );
@@ -57,7 +70,7 @@ describe('JupiterService', () => {
       expect(mockFetch).toHaveBeenCalledTimes(1);
       const [url] = mockFetch.mock.calls[0] as [string];
       expect(url).toBe(
-        `https://api.jup.ag/price/v2?ids=${SOL_MINT},${USDC_MINT}`
+        `https://api.jup.ag/price/v3?ids=${SOL_MINT},${USDC_MINT}`
       );
     });
 
@@ -65,8 +78,8 @@ describe('JupiterService', () => {
       mockFetch.mockResolvedValueOnce(
         makeOkJson({
           data: {
-            [SOL_MINT]: { price: '185.42' },
-            [USDC_MINT]: { price: '1.0002' },
+            [SOL_MINT]: { id: SOL_MINT, price: '185.42', type: 'derivedPrice' },
+            [USDC_MINT]: { id: USDC_MINT, price: '1.0002', type: 'derivedPrice' },
           },
         })
       );
@@ -78,13 +91,28 @@ describe('JupiterService', () => {
       expect(prices.get(USDC_MINT)).toBeCloseTo(1.0002, 5);
     });
 
-    it('returns an empty Map when data object is empty', async () => {
-      mockFetch.mockResolvedValueOnce(makeOkJson({ data: {} }));
-
+    it('returns an empty Map when called with an empty array (no fetch)', async () => {
       const prices = await service.getPrices([]);
 
+      expect(mockFetch).not.toHaveBeenCalled();
       expect(prices).toBeInstanceOf(Map);
       expect(prices.size).toBe(0);
+    });
+
+    it('skips null entries in v3 data without throwing', async () => {
+      mockFetch.mockResolvedValueOnce(
+        makeOkJson({
+          data: {
+            [SOL_MINT]: { id: SOL_MINT, price: '185.42', type: 'derivedPrice' },
+            [USDC_MINT]: null,
+          },
+        })
+      );
+
+      const prices = await service.getPrices([SOL_MINT, USDC_MINT]);
+
+      expect(prices.get(SOL_MINT)).toBeCloseTo(185.42, 5);
+      expect(prices.has(USDC_MINT)).toBe(false);
     });
 
     it('throws with "Jupiter Price API error: {status}" on non-ok response', async () => {
@@ -109,37 +137,35 @@ describe('JupiterService', () => {
   // -------------------------------------------------------------------------
 
   describe('getQuote()', () => {
-    const MOCK_ROUTE_PLAN = [
-      { swapInfo: { label: 'Orca' } },
-    ];
-
-    function makeQuoteResponse(overrides?: Partial<Record<string, unknown>>) {
+    function makeUltraOrderResponse(overrides?: Partial<Record<string, unknown>>) {
       return {
         inputMint: SOL_MINT,
         outputMint: USDC_MINT,
         inAmount: '1000000000',
         outAmount: '184750000',
-        slippageBps: 50,
+        otherAmountThreshold: '183902500',
         priceImpactPct: '0.003',
-        routePlan: MOCK_ROUTE_PLAN,
+        swapType: 'ultra',
+        transaction: 'AQAAAAAAAAAAAAAAAAAAAAAAAABase64==',
+        requestId: 'req-abc-123',
         ...overrides,
       };
     }
 
-    it('calls Jupiter Quote API v6 with correct query params', async () => {
-      mockFetch.mockResolvedValueOnce(makeOkJson(makeQuoteResponse()));
+    it('calls Jupiter Ultra Order endpoint with correct query params', async () => {
+      mockFetch.mockResolvedValueOnce(makeOkJson(makeUltraOrderResponse()));
 
       await service.getQuote(SOL_MINT, USDC_MINT, 1_000_000_000, 50);
 
       expect(mockFetch).toHaveBeenCalledTimes(1);
       const [url] = mockFetch.mock.calls[0] as [string];
       expect(url).toBe(
-        `https://api.jup.ag/quote/v6?inputMint=${SOL_MINT}&outputMint=${USDC_MINT}&amount=1000000000&slippageBps=50`
+        `https://api.jup.ag/ultra/v1/order?inputMint=${SOL_MINT}&outputMint=${USDC_MINT}&amount=1000000000&slippageBps=50`
       );
     });
 
     it('returns a SwapQuote with all fields correctly mapped', async () => {
-      mockFetch.mockResolvedValueOnce(makeOkJson(makeQuoteResponse()));
+      mockFetch.mockResolvedValueOnce(makeOkJson(makeUltraOrderResponse()));
 
       const quote = await service.getQuote(SOL_MINT, USDC_MINT, 1_000_000_000, 50);
 
@@ -149,14 +175,14 @@ describe('JupiterService', () => {
         inputAmount: 1_000_000_000,
         outputAmount: 184_750_000,
         slippage: 0.005,          // 50 bps / 10_000
-        route: 'Orca',
+        route: 'ultra',
         priceImpact: 0.003,
       });
     });
 
     it('maps inputAmount and outputAmount as integers from inAmount/outAmount strings', async () => {
       mockFetch.mockResolvedValueOnce(
-        makeOkJson(makeQuoteResponse({ inAmount: '2500000000', outAmount: '462300000' }))
+        makeOkJson(makeUltraOrderResponse({ inAmount: '2500000000', outAmount: '462300000' }))
       );
 
       const quote = await service.getQuote(SOL_MINT, USDC_MINT, 2_500_000_000, 50);
@@ -169,7 +195,7 @@ describe('JupiterService', () => {
 
     it('computes slippage as bps / 10000', async () => {
       mockFetch.mockResolvedValueOnce(
-        makeOkJson(makeQuoteResponse({ slippageBps: 100 }))
+        makeOkJson(makeUltraOrderResponse())
       );
 
       const quote = await service.getQuote(SOL_MINT, USDC_MINT, 1_000_000_000, 100);
@@ -177,14 +203,36 @@ describe('JupiterService', () => {
       expect(quote.slippage).toBeCloseTo(0.01, 6);
     });
 
-    it('reads route from routePlan[0].swapInfo.label', async () => {
+    it('reads route from swapType field', async () => {
       mockFetch.mockResolvedValueOnce(
-        makeOkJson(makeQuoteResponse({ routePlan: [{ swapInfo: { label: 'Raydium' } }] }))
+        makeOkJson(makeUltraOrderResponse({ swapType: 'aggregator' }))
       );
 
       const quote = await service.getQuote(SOL_MINT, USDC_MINT, 1_000_000_000, 50);
 
-      expect(quote.route).toBe('Raydium');
+      expect(quote.route).toBe('aggregator');
+    });
+
+    it('defaults route to "ultra" when swapType is absent', async () => {
+      const response = makeUltraOrderResponse();
+      delete (response as Record<string, unknown>).swapType;
+
+      mockFetch.mockResolvedValueOnce(makeOkJson(response));
+
+      const quote = await service.getQuote(SOL_MINT, USDC_MINT, 1_000_000_000, 50);
+
+      expect(quote.route).toBe('ultra');
+    });
+
+    it('defaults priceImpact to 0 when priceImpactPct is absent', async () => {
+      const response = makeUltraOrderResponse();
+      delete (response as Record<string, unknown>).priceImpactPct;
+
+      mockFetch.mockResolvedValueOnce(makeOkJson(response));
+
+      const quote = await service.getQuote(SOL_MINT, USDC_MINT, 1_000_000_000, 50);
+
+      expect(quote.priceImpact).toBe(0);
     });
 
     it('throws with "Jupiter Quote API error: {status}" on non-ok response', async () => {
@@ -197,66 +245,58 @@ describe('JupiterService', () => {
   });
 
   // -------------------------------------------------------------------------
-  // getSwapTransaction
+  // executeSwap
   // -------------------------------------------------------------------------
 
-  describe('getSwapTransaction()', () => {
-    const mockQuote: SwapQuote = {
-      inputMint: SOL_MINT,
-      outputMint: USDC_MINT,
-      inputAmount: 1_000_000_000,
-      outputAmount: 184_750_000,
-      slippage: 0.005,
-      route: 'Orca',
-      priceImpact: 0.003,
-    };
+  describe('executeSwap()', () => {
+    const SIGNED_TX = 'AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABAAQADBase64SignedTx==';
+    const REQUEST_ID = 'req-abc-123';
+    const SIGNATURE = '5J3mBbAH58cDDGq4LDWMQ2JGvFkpFV6TXvSdMhHVhFJU7NJmkNH7L9TtxhqSdNmMHGy8iL8e1Kvb3xPcnJDzKsV';
 
-    const ENCODED_TX = 'AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABAAQADBase64encodedTransactionHere==';
-
-    it('POSTs to Jupiter Swap v6 endpoint with quoteResponse and userPublicKey', async () => {
+    it('POSTs to Jupiter Ultra execute endpoint with signedTransaction and requestId', async () => {
       mockFetch.mockResolvedValueOnce(
-        makeOkJson({ swapTransaction: ENCODED_TX })
+        makeOkJson({ signature: SIGNATURE })
       );
 
-      await service.getSwapTransaction(mockQuote, WALLET);
+      await service.executeSwap(SIGNED_TX, REQUEST_ID);
 
       expect(mockFetch).toHaveBeenCalledTimes(1);
       const [url, options] = mockFetch.mock.calls[0] as [string, RequestInit];
-      expect(url).toBe('https://api.jup.ag/swap/v6');
+      expect(url).toBe('https://api.jup.ag/ultra/v1/execute');
       expect(options.method).toBe('POST');
 
       const body = JSON.parse(options.body as string) as Record<string, unknown>;
-      expect(body.quoteResponse).toEqual(mockQuote);
-      expect(body.userPublicKey).toBe(WALLET);
+      expect(body.signedTransaction).toBe(SIGNED_TX);
+      expect(body.requestId).toBe(REQUEST_ID);
     });
 
     it('sends Content-Type: application/json header', async () => {
       mockFetch.mockResolvedValueOnce(
-        makeOkJson({ swapTransaction: ENCODED_TX })
+        makeOkJson({ signature: SIGNATURE })
       );
 
-      await service.getSwapTransaction(mockQuote, WALLET);
+      await service.executeSwap(SIGNED_TX, REQUEST_ID);
 
       const [, options] = mockFetch.mock.calls[0] as [string, RequestInit];
       const headers = options.headers as Record<string, string>;
       expect(headers['Content-Type']).toBe('application/json');
     });
 
-    it('returns the swapTransaction string from the response', async () => {
+    it('returns the transaction signature string from the response', async () => {
       mockFetch.mockResolvedValueOnce(
-        makeOkJson({ swapTransaction: ENCODED_TX })
+        makeOkJson({ signature: SIGNATURE })
       );
 
-      const tx = await service.getSwapTransaction(mockQuote, WALLET);
+      const sig = await service.executeSwap(SIGNED_TX, REQUEST_ID);
 
-      expect(tx).toBe(ENCODED_TX);
+      expect(sig).toBe(SIGNATURE);
     });
 
     it('throws with "Jupiter Swap API error: {status}" on non-ok response', async () => {
       mockFetch.mockResolvedValueOnce(makeErrorResponse(503));
 
       await expect(
-        service.getSwapTransaction(mockQuote, WALLET)
+        service.executeSwap(SIGNED_TX, REQUEST_ID)
       ).rejects.toThrow('Jupiter Swap API error: 503');
     });
   });

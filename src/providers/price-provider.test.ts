@@ -27,7 +27,10 @@ const USDT_MINT = 'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB';
 const MSOL_MINT = 'mSoLzYCxHdYgdzU16g5QSh3i5K3z3KZK7ytfqcJm7So';
 const JITOSOL_MINT = 'J1toso1uCk3RLmjorhTtrVwY9HJ7X8V9yYac6Y7kGCPn';
 
-const dummyRuntime = {} as IAgentRuntime;
+const mockGetSetting = vi.fn().mockReturnValue(null);
+const dummyRuntime = {
+  getSetting: mockGetSetting,
+} as unknown as IAgentRuntime;
 const dummyMessage = {} as Memory;
 const dummyState = {} as State;
 
@@ -46,6 +49,7 @@ const mockPriceMap = new Map<string, number>([
 describe('priceProvider', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockGetSetting.mockReturnValue(null);
   });
 
   it('has the correct name and description', () => {
