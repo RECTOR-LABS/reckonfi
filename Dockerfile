@@ -2,43 +2,49 @@
 
 FROM node:23-slim
 
-# Disable telemetry early
 ENV ELIZAOS_TELEMETRY_DISABLED=true
 ENV DO_NOT_TRACK=1
 
-# Install system dependencies needed for native modules (e.g. better-sqlite3)
+# System deps for native modules (better-sqlite3)
 RUN apt-get update && apt-get install -y \
-  python3 \
-  make \
-  g++ \
-  git \
+  python3 make g++ git \
   && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# Install pnpm
 RUN npm install -g pnpm
 
-# Install backend dependencies
-COPY package.json ./
+# Backend deps
+COPY package.json bun.lock ./
 RUN pnpm install
 
-# Install frontend dependencies and build
-COPY frontend/package.json ./frontend/
+# Frontend deps
+COPY frontend/package.json frontend/bun.lock ./frontend/
 RUN cd frontend && pnpm install
 
-COPY frontend/ ./frontend/
+# Copy frontend source and build (exclude node_modules via .dockerignore)
+COPY frontend/src ./frontend/src
+COPY frontend/public ./frontend/public
+COPY frontend/index.html frontend/vite.config.ts frontend/tsconfig.json frontend/tsconfig.app.json frontend/tsconfig.node.json frontend/components.json ./frontend/
 RUN cd frontend && pnpm run build
 
 # Copy backend source
 COPY src/ ./src/
 COPY characters/ ./characters/
-COPY tsconfig.json ./
+COPY build.ts tsconfig.json ./
 
-# Move frontend build to /app/public/ (served by ElizaOS static file handler)
+# Install bun for plugin build
+RUN npm install -g bun
+
+# Build plugin
+RUN bun run build.ts
+
+# Symlink for ElizaOS plugin resolution
+RUN ln -sf /app /app/node_modules/nosana-eliza-agent
+
+# Move frontend build to public
 RUN mv frontend/dist /app/public
 
-# Create data directory for SQLite
 RUN mkdir -p /app/data
 
 ENV NODE_ENV=production
