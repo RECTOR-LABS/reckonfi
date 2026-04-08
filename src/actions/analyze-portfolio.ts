@@ -1,5 +1,6 @@
 import type { Action, IAgentRuntime, Memory, State, HandlerCallback } from '@elizaos/core';
 import { HeliusService } from '../services/helius.service';
+import { getWalletOverride } from './set-wallet';
 import { JupiterService } from '../services/jupiter.service';
 import { KaminoService } from '../services/kamino.service';
 import { DriftService } from '../services/drift.service';
@@ -49,7 +50,7 @@ async function handler(
   | { success: true; data: { snapshot: PortfolioSnapshot; result: ReasoningResult } }
   | { success: false; error: string }
 > {
-  const walletAddress = String(runtime.getSetting('WALLET_ADDRESS') ?? '');
+  const walletAddress = getWalletOverride() || String(runtime.getSetting('WALLET_ADDRESS') ?? '');
   const heliusApiKey = String(runtime.getSetting('HELIUS_API_KEY') ?? '');
 
   if (!walletAddress || !heliusApiKey) {

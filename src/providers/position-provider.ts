@@ -2,6 +2,7 @@ import type { Provider, IAgentRuntime, Memory, State } from '@elizaos/core';
 import { KaminoService } from '../services/kamino.service';
 import { DriftService } from '../services/drift.service';
 import { MarginfiService } from '../services/marginfi.service';
+import { getWalletOverride } from '../actions/set-wallet';
 import type { Position } from '../types/index';
 
 // ---------------------------------------------------------------------------
@@ -27,7 +28,7 @@ export const positionProvider: Provider = {
     text: string;
     data: { positions: Position[]; totalValue: number; errors: string[] };
   }> => {
-    const walletAddress = String(runtime.getSetting('WALLET_ADDRESS') ?? '');
+    const walletAddress = getWalletOverride() || String(runtime.getSetting('WALLET_ADDRESS') ?? '');
     const heliusApiKey = String(runtime.getSetting('HELIUS_API_KEY') ?? '');
 
     if (!walletAddress || !heliusApiKey) {

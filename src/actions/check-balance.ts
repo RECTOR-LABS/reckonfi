@@ -1,5 +1,6 @@
 import type { Action, IAgentRuntime, Memory, State, HandlerCallback } from '@elizaos/core';
 import { HeliusService } from '../services/helius.service';
+import { getWalletOverride } from './set-wallet';
 import type { TokenBalance } from '../types/index';
 
 const TOP_TOKENS_LIMIT = 15;
@@ -32,7 +33,7 @@ async function handler(
   _options?: Record<string, unknown>,
   callback?: HandlerCallback,
 ): Promise<{ success: true; data: { tokens: TokenBalance[]; totalUSD: number } } | { success: false; error: string }> {
-  const walletAddress = String(runtime.getSetting('WALLET_ADDRESS') ?? '');
+  const walletAddress = getWalletOverride() || String(runtime.getSetting('WALLET_ADDRESS') ?? '');
   const heliusApiKey = String(runtime.getSetting('HELIUS_API_KEY') ?? '');
 
   if (!walletAddress || !heliusApiKey) {

@@ -1,5 +1,6 @@
 import type { Provider, IAgentRuntime, Memory, State } from '@elizaos/core';
 import { HeliusService } from '../services/helius.service';
+import { getWalletOverride } from '../actions/set-wallet';
 import type { TokenBalance } from '../types/index';
 
 const TOP_TOKENS_LIMIT = 10;
@@ -20,7 +21,7 @@ export const walletProvider: Provider = {
     _message: Memory,
     _state: State
   ): Promise<{ text: string; data: { tokens: TokenBalance[]; totalUSD: number; walletAddress: string } | null }> => {
-    const walletAddress = String(runtime.getSetting('WALLET_ADDRESS') ?? '');
+    const walletAddress = getWalletOverride() || String(runtime.getSetting('WALLET_ADDRESS') ?? '');
     const heliusApiKey = String(runtime.getSetting('HELIUS_API_KEY') ?? '');
 
     if (!walletAddress || !heliusApiKey) {
