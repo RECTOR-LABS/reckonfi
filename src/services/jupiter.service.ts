@@ -6,26 +6,20 @@ const JUPITER_BASE = 'https://api.jup.ag';
 // Internal API response types
 // ---------------------------------------------------------------------------
 
-interface JupiterPriceV2Response {
-  data: Record<string, { price: string }>;
+interface JupiterPriceV3Response {
+  data: Record<string, { id: string; price: string; type: string } | null>;
 }
 
-interface JupiterRoutePlanStep {
-  swapInfo: { label: string };
-}
-
-interface JupiterQuoteV6Response {
+interface JupiterUltraOrderResponse {
   inputMint: string;
   outputMint: string;
   inAmount: string;
   outAmount: string;
-  slippageBps: number;
-  priceImpactPct: string;
-  routePlan: JupiterRoutePlanStep[];
-}
-
-interface JupiterSwapV6Response {
-  swapTransaction: string;
+  priceImpactPct?: string;
+  otherAmountThreshold: string;
+  swapType: string;
+  transaction: string;
+  requestId: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -33,52 +27,56 @@ interface JupiterSwapV6Response {
 // ---------------------------------------------------------------------------
 
 /**
- * Jupiter API client for price lookups, swap quotes, and swap transactions.
+ * Jupiter API client for price lookups and swap quotes.
  *
- * Uses Jupiter Price API v2, Quote API v6, and Swap API v6.
+ * Uses Jupiter Price API v3 and Ultra Swap API.
+ * API key from portal.jup.ag is required for production use.
  */
 export class JupiterService {
   private readonly baseUrl: string;
+  private readonly apiKey: string;
 
-  constructor() {
+  constructor(apiKey?: string) {
     this.baseUrl = JUPITER_BASE;
+    this.apiKey = apiKey ?? '';
+  }
+
+  private get headers(): Record<string, string> {
+    const h: Record<string, string> = {};
+    if (this.apiKey) {
+      h['x-api-key'] = this.apiKey;
+    }
+    return h;
   }
 
   /**
-   * Fetches USD prices for a list of token mints using Jupiter Price API v2.
-   *
-   * @param mints - Array of Solana token mint addresses.
-   * @returns Map of mint address → price as float.
-   * @throws On non-2xx HTTP response.
+   * Fetches USD prices for a list of token mints using Jupiter Price API v3.
    */
   async getPrices(mints: string[]): Promise<Map<string, number>> {
-    const url = `${this.baseUrl}/price/v2?ids=${mints.join(',')}`;
+    if (mints.length === 0) return new Map();
 
-    const response = await fetch(url);
+    const url = `${this.baseUrl}/price/v3?ids=${mints.join(',')}`;
+
+    const response = await fetch(url, { headers: this.headers });
 
     if (!response.ok) {
       throw new Error(`Jupiter Price API error: ${response.status}`);
     }
 
-    const data = (await response.json()) as JupiterPriceV2Response;
+    const data = (await response.json()) as JupiterPriceV3Response;
 
     const priceMap = new Map<string, number>();
     for (const [mint, entry] of Object.entries(data.data)) {
-      priceMap.set(mint, parseFloat(entry.price));
+      if (entry && entry.price) {
+        priceMap.set(mint, parseFloat(entry.price));
+      }
     }
 
     return priceMap;
   }
 
   /**
-   * Fetches a swap quote between two tokens using Jupiter Quote API v6.
-   *
-   * @param inputMint - Source token mint address.
-   * @param outputMint - Destination token mint address.
-   * @param amount - Input amount in raw token units (integer).
-   * @param slippageBps - Slippage tolerance in basis points.
-   * @returns Parsed SwapQuote object.
-   * @throws On non-2xx HTTP response.
+   * Fetches a swap quote using Jupiter Ultra Swap API.
    */
   async getQuote(
     inputMint: string,
@@ -86,56 +84,51 @@ export class JupiterService {
     amount: number,
     slippageBps: number
   ): Promise<SwapQuote> {
-    const url =
-      `${this.baseUrl}/quote/v6` +
-      `?inputMint=${inputMint}` +
-      `&outputMint=${outputMint}` +
-      `&amount=${amount}` +
-      `&slippageBps=${slippageBps}`;
+    const params = new URLSearchParams({
+      inputMint,
+      outputMint,
+      amount: amount.toString(),
+      slippageBps: slippageBps.toString(),
+    });
 
-    const response = await fetch(url);
+    const url = `${this.baseUrl}/ultra/v1/order?${params}`;
+    const response = await fetch(url, { headers: this.headers });
 
     if (!response.ok) {
       throw new Error(`Jupiter Quote API error: ${response.status}`);
     }
 
-    const data = (await response.json()) as JupiterQuoteV6Response;
+    const data = (await response.json()) as JupiterUltraOrderResponse;
 
     return {
       inputMint: data.inputMint,
       outputMint: data.outputMint,
       inputAmount: parseInt(data.inAmount, 10),
       outputAmount: parseInt(data.outAmount, 10),
-      slippage: data.slippageBps / 10_000,
-      route: data.routePlan[0]!.swapInfo.label,
-      priceImpact: parseFloat(data.priceImpactPct),
+      slippage: slippageBps / 10_000,
+      route: data.swapType ?? 'ultra',
+      priceImpact: parseFloat(data.priceImpactPct ?? '0'),
     };
   }
 
   /**
-   * Fetches a serialized swap transaction from Jupiter Swap API v6.
-   *
-   * @param quoteResponse - The SwapQuote returned by getQuote().
-   * @param userPublicKey - The user's Solana wallet public key (base58).
-   * @returns Base64-encoded serialized transaction string.
-   * @throws On non-2xx HTTP response.
+   * Executes a signed swap transaction via Jupiter Ultra.
    */
-  async getSwapTransaction(
-    quoteResponse: SwapQuote,
-    userPublicKey: string
+  async executeSwap(
+    signedTransaction: string,
+    requestId: string
   ): Promise<string> {
-    const response = await fetch(`${this.baseUrl}/swap/v6`, {
+    const response = await fetch(`${this.baseUrl}/ultra/v1/execute`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ quoteResponse, userPublicKey }),
+      headers: { ...this.headers, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ signedTransaction, requestId }),
     });
 
     if (!response.ok) {
       throw new Error(`Jupiter Swap API error: ${response.status}`);
     }
 
-    const data = (await response.json()) as JupiterSwapV6Response;
-
-    return data.swapTransaction;
+    const data = (await response.json()) as { signature: string };
+    return data.signature;
   }
 }

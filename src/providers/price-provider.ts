@@ -26,11 +26,12 @@ export const priceProvider: Provider = {
   description: 'Provides current token prices from Jupiter',
 
   get: async (
-    _runtime: IAgentRuntime,
+    runtime: IAgentRuntime,
     _message: Memory,
     _state: State
   ): Promise<{ text: string; data: { prices: PriceData[] } }> => {
-    const jupiter = new JupiterService();
+    const jupiterApiKey = String(runtime.getSetting('JUPITER_API_KEY') ?? '');
+    const jupiter = new JupiterService(jupiterApiKey || undefined);
     const mints = TRACKED_TOKENS.map((t) => t.mint);
     const priceMap = await jupiter.getPrices(mints);
 
