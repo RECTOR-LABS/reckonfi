@@ -212,6 +212,7 @@ describe('analyzePortfolioAction', () => {
     });
 
     it('returns { success: false } when HELIUS_API_KEY is missing', async () => {
+      const origKey = process.env.HELIUS_API_KEY; process.env.HELIUS_API_KEY = "";
       const runtime = createMockRuntime({
         settings: { WALLET_ADDRESS: 'FGSkt8MwXH83daNNW8ZkoqhL1KLcLoZLcdGJz84BWWr', HELIUS_API_KEY: '' },
       });

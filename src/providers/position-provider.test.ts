@@ -93,6 +93,7 @@ describe('positionProvider', () => {
     });
 
     it('returns not-configured message when HELIUS_API_KEY is missing', async () => {
+      const origKey = process.env.HELIUS_API_KEY; process.env.HELIUS_API_KEY = "";
       const runtime = makeRuntime({ WALLET_ADDRESS: WALLET });
       const result = await positionProvider.get(runtime, dummyMessage, dummyState);
 

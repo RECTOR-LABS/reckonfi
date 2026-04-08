@@ -1,3 +1,4 @@
+import { getSetting } from '../utils/get-setting';
 import type { Provider, IAgentRuntime, Memory, State } from '@elizaos/core';
 import { KaminoService } from '../services/kamino.service';
 import { DriftService } from '../services/drift.service';
@@ -28,8 +29,8 @@ export const positionProvider: Provider = {
     text: string;
     data: { positions: Position[]; totalValue: number; errors: string[] };
   }> => {
-    const walletAddress = getWalletOverride() || String(runtime.getSetting('WALLET_ADDRESS') ?? '');
-    const heliusApiKey = String(runtime.getSetting('HELIUS_API_KEY') ?? '');
+    const walletAddress = getWalletOverride() || getSetting(runtime, 'WALLET_ADDRESS');
+    const heliusApiKey = getSetting(runtime, 'HELIUS_API_KEY');
 
     if (!walletAddress || !heliusApiKey) {
       return {

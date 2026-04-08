@@ -1,3 +1,4 @@
+import { getSetting } from '../utils/get-setting';
 import type { Provider, IAgentRuntime, Memory, State } from '@elizaos/core';
 import { JupiterService } from '../services/jupiter.service';
 import type { PriceData } from '../types/index';
@@ -30,7 +31,7 @@ export const priceProvider: Provider = {
     _message: Memory,
     _state: State
   ): Promise<{ text: string; data: { prices: PriceData[] } }> => {
-    const jupiterApiKey = String(runtime.getSetting('JUPITER_API_KEY') ?? '');
+    const jupiterApiKey = getSetting(runtime, 'JUPITER_API_KEY');
     const jupiter = new JupiterService(jupiterApiKey || undefined);
     const mints = TRACKED_TOKENS.map((t) => t.mint);
 

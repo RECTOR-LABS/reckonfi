@@ -131,6 +131,7 @@ describe('checkBalanceAction', () => {
     });
 
     it('calls callback with error text when HELIUS_API_KEY is missing', async () => {
+      const origKey = process.env.HELIUS_API_KEY; process.env.HELIUS_API_KEY = "";
       const runtime = createMockRuntime({
         settings: { WALLET_ADDRESS: WALLET, HELIUS_API_KEY: '' },
       });
