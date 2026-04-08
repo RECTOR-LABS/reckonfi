@@ -3,9 +3,11 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "main": "dist/index.js",
   "scripts": {
     "start": "elizaos start --character ./characters/agent.character.json",
-    "dev": "elizaos dev --character ./characters/agent.character.json",
+    "build": "bun run build.ts",
+    "dev": "bun run build.ts && elizaos dev --character ./characters/agent.character.json",
     "test": "vitest run",
     "test:watch": "vitest"
   },
